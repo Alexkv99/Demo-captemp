@@ -1,0 +1,5 @@
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+PSCO,1,1,1,1,1,1,1,20220101,20220101
+PVS,1,1,1,1,1,1,1,20220102,20220102
+ETE,1,1,1,1,1,1,1,20220103,20220103
+DJF,1,1,1,1,1,1,1,20220104,20220104
