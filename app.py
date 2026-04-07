@@ -124,6 +124,61 @@ def _js_esc(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
 
 
+def _fetch_segment_geometry(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    access_token: str,
+    profile: str = "driving",
+) -> list[tuple[float, float]]:
+    """Fetch the shortest driving path between two single waypoints.
+    Returns list of (lat, lon).  Falls back to straight line."""
+    import urllib.request
+
+    coords_str = f"{a[1]},{a[0]};{b[1]},{b[0]}"  # lon,lat;lon,lat
+    url = (
+        f"https://api.mapbox.com/directions/v5/mapbox/{profile}/{coords_str}"
+        f"?geometries=geojson&overview=full&access_token={access_token}"
+    )
+    try:
+        resp = urllib.request.urlopen(urllib.request.Request(url))
+        data = json.loads(resp.read())
+        if data.get("code") == "Ok" and data.get("routes"):
+            geojson_coords = data["routes"][0]["geometry"]["coordinates"]
+            return [(lat, lon) for lon, lat in geojson_coords]
+    except Exception:
+        pass
+    return [a, b]
+
+
+def _fetch_road_geometry(
+    waypoints: list[tuple[float, float]],
+    access_token: str,
+    profile: str = "driving",
+) -> list[tuple[float, float]]:
+    """Get road-snapped geometry for a waypoint sequence.
+
+    Renders segment-by-segment: each consecutive pair (A->B, B->C, ...)
+    is fetched independently and concatenated.  This avoids Mapbox's
+    multi-waypoint trajectory optimiser, which can introduce visual
+    U-turns/loops when the "best" path through all waypoints differs
+    from the point-to-point shortest path.
+    """
+    if len(waypoints) < 2:
+        return list(waypoints)
+
+    full: list[tuple[float, float]] = []
+    for i in range(len(waypoints) - 1):
+        seg = _fetch_segment_geometry(waypoints[i], waypoints[i + 1],
+                                       access_token, profile)
+        if i == 0:
+            full.extend(seg)
+        else:
+            # Avoid duplicating the junction point
+            full.extend(seg[1:] if seg else [])
+        time.sleep(0.05)
+    return full
+
+
 def generate_dashboard_html(
     routes, freqs, node_coords, G, metrics, adeq,
     adeq_node_status, stop_names, title="Optimised Routes",
@@ -131,13 +186,26 @@ def generate_dashboard_html(
     """Build the self-contained HTML dashboard string."""
 
     # Mapbox road-snapped geometry cache
-    cache_file = DEMO_DIR / ".mapbox_cache" / "route_geometries.json"
+    cache_dir = DEMO_DIR / ".mapbox_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / "route_geometries.json"
     geom_cache = {}
     if cache_file.exists():
         try:
             geom_cache = json.loads(cache_file.read_text())
         except Exception:
             pass
+
+    # Mapbox token from .env or env var
+    access_token = os.environ.get("MAPBOX_ACCESS_TOKEN", "")
+    if not access_token:
+        env_path = DEMO_DIR / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("MAPBOX_ACCESS_TOKEN="):
+                    access_token = line.split("=", 1)[1].strip()
+    use_mapbox = bool(access_token)
+    cache_dirty = False
 
     # Build route infos
     route_infos = []
@@ -150,10 +218,18 @@ def generate_dashboard_html(
             if c:
                 waypoints.append((c[1], c[0]))  # (lat, lon)
 
-        # Try cache
-        cache_key = ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
+        # Try cache first, then Mapbox API, then straight lines
+        # v2 suffix invalidates cache entries from the old API call
+        # (without continue_straight=true, which caused visual U-turns)
+        cache_key = "v2|" + ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
         if cache_key in geom_cache:
             coords = [f"[{c[0]}, {c[1]}]" for c in geom_cache[cache_key]]
+        elif use_mapbox and waypoints:
+            road_coords = _fetch_road_geometry(
+                waypoints, access_token, "driving")
+            geom_cache[cache_key] = road_coords
+            cache_dirty = True
+            coords = [f"[{lat}, {lon}]" for lat, lon in road_coords]
         else:
             coords = [f"[{lat}, {lon}]" for lat, lon in waypoints]
 
@@ -173,6 +249,13 @@ def generate_dashboard_html(
             "freq": freq, "n_stops": len(route),
             "stop_names": snames, "time": rt,
         })
+
+    # Save geometry cache if we fetched new geometries
+    if cache_dirty:
+        try:
+            cache_file.write_text(json.dumps(geom_cache))
+        except Exception:
+            pass
 
     # Metrics
     m_d0 = metrics.get("d0", 0) if metrics else 0
@@ -766,6 +849,21 @@ elif step == "4 - Run & Results":
             )
         else:
             status.write("Skipping local search.")
+
+        # ----------------------------------------------------------------
+        # Phase 4b: Final axis-sort on selected routes
+        # ----------------------------------------------------------------
+        # The solver + local search optimise for passenger cost and adequation,
+        # not visual coherence.  Reorder each final route's stops monotonically
+        # along its principal axis so the rendered polyline follows a clean
+        # corridor direction without zigzag.  This preserves the SET of stops
+        # on each route (so direct OD coverage is unchanged), only the order.
+        status.write("Axis-sorting final routes for clean visuals...")
+        from geocapt_routes import _axis_sort_route
+        points_for_sort = all_data[ALL_BANDS[0]].get("points")
+        nc_sort = build_node_coords(points_for_sort) if points_for_sort else {}
+        if nc_sort:
+            selected = [_axis_sort_route(r, nc_sort) for r in selected]
 
         progress.progress(85, text="Evaluating results...")
 
