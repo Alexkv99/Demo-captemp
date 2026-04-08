@@ -124,20 +124,46 @@ def _js_esc(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
 
 
+def _bearing(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Initial compass bearing (0-360°) from point a to point b.
+    Both inputs are (lat, lon)."""
+    import math
+
+    lat1, lon1 = math.radians(a[0]), math.radians(a[1])
+    lat2, lon2 = math.radians(b[0]), math.radians(b[1])
+    dlon = lon2 - lon1
+    y = math.sin(dlon) * math.cos(lat2)
+    x = (math.cos(lat1) * math.sin(lat2)
+         - math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
 def _fetch_segment_geometry(
     a: tuple[float, float],
     b: tuple[float, float],
     access_token: str,
     profile: str = "driving",
+    entry_bearing: float | None = None,
 ) -> list[tuple[float, float]]:
-    """Fetch the shortest driving path between two single waypoints.
-    Returns list of (lat, lon).  Falls back to straight line."""
+    """Fetch the driving path between two waypoints.
+
+    If entry_bearing is provided, constrains the direction of travel at 'a'
+    so the route leaves 'a' heading in approximately that direction (±45°).
+    This is how segment-by-segment fetching preserves continuity at
+    junctions and avoids U-turns.
+    Returns list of (lat, lon); falls back to straight line on failure.
+    """
     import urllib.request
 
     coords_str = f"{a[1]},{a[0]};{b[1]},{b[0]}"  # lon,lat;lon,lat
+    params = ["geometries=geojson", "overview=full"]
+    if entry_bearing is not None:
+        # Bearings format: "brg,range;brg,range" — one entry per waypoint.
+        # Constrain entry at A, leave B unconstrained (trailing ';').
+        params.append(f"bearings={int(round(entry_bearing))},45;")
     url = (
         f"https://api.mapbox.com/directions/v5/mapbox/{profile}/{coords_str}"
-        f"?geometries=geojson&overview=full&access_token={access_token}"
+        f"?{'&'.join(params)}&access_token={access_token}"
     )
     try:
         resp = urllib.request.urlopen(urllib.request.Request(url))
@@ -147,6 +173,10 @@ def _fetch_segment_geometry(
             return [(lat, lon) for lon, lat in geojson_coords]
     except Exception:
         pass
+    # If the constrained call fails, retry once without the bearing so a
+    # geometrically impossible constraint doesn't drop us to a straight line.
+    if entry_bearing is not None:
+        return _fetch_segment_geometry(a, b, access_token, profile, None)
     return [a, b]
 
 
@@ -155,26 +185,34 @@ def _fetch_road_geometry(
     access_token: str,
     profile: str = "driving",
 ) -> list[tuple[float, float]]:
-    """Get road-snapped geometry for a waypoint sequence.
+    """Segment-by-segment road geometry with bearing continuity.
 
-    Renders segment-by-segment: each consecutive pair (A->B, B->C, ...)
-    is fetched independently and concatenated.  This avoids Mapbox's
-    multi-waypoint trajectory optimiser, which can introduce visual
-    U-turns/loops when the "best" path through all waypoints differs
-    from the point-to-point shortest path.
+    Each consecutive pair (A->B, B->C, ...) is fetched independently, but
+    every call after the first receives an entry bearing derived from the
+    tail of the previous segment.  This prevents the shortest-path solver
+    from U-turning at intermediate junctions while still letting each
+    segment be solved in isolation.
     """
     if len(waypoints) < 2:
         return list(waypoints)
 
     full: list[tuple[float, float]] = []
+    entry_bearing: float | None = None
     for i in range(len(waypoints) - 1):
-        seg = _fetch_segment_geometry(waypoints[i], waypoints[i + 1],
-                                       access_token, profile)
+        seg = _fetch_segment_geometry(
+            waypoints[i], waypoints[i + 1], access_token, profile,
+            entry_bearing=entry_bearing,
+        )
         if i == 0:
             full.extend(seg)
         else:
             # Avoid duplicating the junction point
             full.extend(seg[1:] if seg else [])
+        # Derive the next segment's entry bearing from this segment's tail
+        if len(seg) >= 2:
+            entry_bearing = _bearing(seg[-2], seg[-1])
+        else:
+            entry_bearing = None
         time.sleep(0.05)
     return full
 
@@ -204,7 +242,8 @@ def generate_dashboard_html(
             for line in env_path.read_text().splitlines():
                 if line.startswith("MAPBOX_ACCESS_TOKEN="):
                     access_token = line.split("=", 1)[1].strip()
-    use_mapbox = bool(access_token)
+    # use_mapbox = bool(access_token)
+    use_mapbox = False
     cache_dirty = False
 
     # Build route infos
@@ -219,9 +258,10 @@ def generate_dashboard_html(
                 waypoints.append((c[1], c[0]))  # (lat, lon)
 
         # Try cache first, then Mapbox API, then straight lines
-        # v2 suffix invalidates cache entries from the old API call
-        # (without continue_straight=true, which caused visual U-turns)
-        cache_key = "v2|" + ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
+        # v4 suffix invalidates v3 (single multi-waypoint) geometries; the
+        # current fetcher is segment-by-segment with bearing continuity at
+        # each junction to prevent U-turns.
+        cache_key = "v4|" + ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
         if cache_key in geom_cache:
             coords = [f"[{c[0]}, {c[1]}]" for c in geom_cache[cache_key]]
         elif use_mapbox and waypoints:
