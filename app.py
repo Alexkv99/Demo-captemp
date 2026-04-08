@@ -242,8 +242,8 @@ def generate_dashboard_html(
             for line in env_path.read_text().splitlines():
                 if line.startswith("MAPBOX_ACCESS_TOKEN="):
                     access_token = line.split("=", 1)[1].strip()
-    # use_mapbox = bool(access_token)
-    use_mapbox = False
+    use_mapbox = bool(access_token)
+    # use_mapbox = False
     cache_dirty = False
 
     # Build route infos
