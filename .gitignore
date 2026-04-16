@@ -208,7 +208,7 @@ __marimo__/
 
 # Demo-specific
 .mapbox_cache/
-data/GTFS_custom/
+data/
 *.html
 
 .packaging

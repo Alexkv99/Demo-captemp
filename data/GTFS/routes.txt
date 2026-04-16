@@ -1,7 +1,0 @@
-route_id,route_short_name,route_long_name,route_type,route_color
-1,L50,Ligne 50,3,0e31e3
-2,L52,Ligne 52,3,ff9100
-3,L51,Ligne 51,3,f28aeb
-4,L54,Ligne 54,3,0b8a3c
-5,L10,Ligne 10,3,FF0000
-6,L53,Ligne 53,3,696969

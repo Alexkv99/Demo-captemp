@@ -1,2 +1,0 @@
-agency_id,agency_name,agency_url,agency_timezone
-1,geodesign_poissy,https://geodesign.transdev.net/poissy,Europe/Paris
