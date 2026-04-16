@@ -681,6 +681,8 @@ elif step == "3 - Priorities":
                                  help="Optimise frequencies (vs fixed f_min)")
         route_rules = col2.checkbox("Route Quality Rules", value=True,
                                     help="Penalise loops, tiroirs, cul-de-sacs")
+        print_z = col1.checkbox("Print Z Evolution", value=False,
+                                help="Print Z component table in console across iterations")
 
         st.subheader("Solver Settings")
         col1, col2, col3 = st.columns(3)
@@ -700,6 +702,7 @@ elif step == "3 - Priorities":
             "max_routes": max_routes, "time_limit": time_limit,
             "max_iter": max_iter, "initial_count": initial_count,
             "pricing_count": 500, "ls_rounds": ls_rounds,
+            "print_z": print_z,
         }
     else:
         params = PRESETS[priority]
@@ -852,6 +855,7 @@ elif step == "4 - Run & Results":
             min_improvement=0.001,
             seed=42,
             verbose=True,
+            print_z=params.get("print_z", False),
             route_gen_G=route_gen_G,
             min_route_len=min_rl,
             max_route_len=max_rl,

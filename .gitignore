@@ -212,3 +212,5 @@ data/GTFS_custom/
 *.html
 
 .packaging
+
+.claude/
