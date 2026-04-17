@@ -381,26 +381,26 @@ def generate_dashboard_html(
 <div id="top-bar">
   <h2>{title}</h2>
   <div class="metric"><div class="metric-val">{m_d0:.1f}%</div><div class="metric-lbl">d0 direct</div></div>
-  <div class="metric"><div class="metric-val">{m_d1:.1f}%</div><div class="metric-lbl">d1 transfer</div></div>
+  <div class="metric"><div class="metric-val">{m_d1:.1f}%</div><div class="metric-lbl">d1 correspondance</div></div>
   <div class="metric"><div class="metric-val">{m_d2p:.1f}%</div><div class="metric-lbl">d2+</div></div>
-  <div class="metric"><div class="metric-val">{m_dun:.1f}%</div><div class="metric-lbl">dun unserved</div></div>
+  <div class="metric"><div class="metric-val">{m_dun:.1f}%</div><div class="metric-lbl">dun non desservi</div></div>
   <div class="metric"><div class="metric-val">{m_att:.2f}</div><div class="metric-lbl">ATT (min)</div></div>
-  <div class="metric"><div class="metric-val">{m_pct_ok:.1f}%</div><div class="metric-lbl">Adequation</div></div>
-  <div class="metric"><div class="metric-val">{total_veh_min:.0f}</div><div class="metric-lbl">Veh-min/h</div></div>
+  <div class="metric"><div class="metric-val">{m_pct_ok:.1f}%</div><div class="metric-lbl">Adéquation</div></div>
+  <div class="metric"><div class="metric-val">{total_veh_min:.0f}</div><div class="metric-lbl">Véh-min/h</div></div>
 </div>
 <div id="main">
 <div id="map"></div>
 <div id="sidebar">
-  <h3>Adequation Legend</h3>
+  <h3>Légende adéquation</h3>
   <div class="legend-bar">
     <span><div class="legend-dot" style="background:#DAA520;"></div> OK</span>
-    <span><div class="legend-dot" style="background:blue;"></div> Under-supply</span>
-    <span><div class="legend-dot" style="background:red;"></div> Over-supply</span>
-    <span><div class="legend-dot" style="background:gray;"></div> No data</span>
+    <span><div class="legend-dot" style="background:blue;"></div> Sous-offre</span>
+    <span><div class="legend-dot" style="background:red;"></div> Sur-offre</span>
+    <span><div class="legend-dot" style="background:gray;"></div> Aucune donnée</span>
   </div>
-  <h3>Routes ({len(routes)})</h3>
+  <h3>Lignes ({len(routes)})</h3>
   <table class="routes">
-    <thead><tr><th>#</th><th>f/h</th><th>Stops</th><th>Min</th><th>Itinerary</th></tr></thead>
+    <thead><tr><th>#</th><th>f/h</th><th>Arrêts</th><th>Min</th><th>Itinéraire</th></tr></thead>
     <tbody>{routes_table}</tbody>
   </table>
 </div>
@@ -437,8 +437,8 @@ L.circleMarker([{lat}, {lon}], {{
         weight = max(2, min(6, ri["freq"] / 3))
         popup_stops = " &rarr; ".join(_js_esc(n) for n in ri["stop_names"])
         popup_text = _js_esc(
-            f"<b>Route {ri['idx']}</b><br>"
-            f"f={ri['freq']:.1f} veh/h, {ri['n_stops']} stops, {ri['time']:.1f} min<br>"
+            f"<b>Ligne {ri['idx']}</b><br>"
+            f"f={ri['freq']:.1f} véh/h, {ri['n_stops']} arrêts, {ri['time']:.1f} min<br>"
             f"<small>{popup_stops}</small>"
         )
         html += f"""
@@ -482,7 +482,7 @@ st.sidebar.markdown("---")
 # Step indicator
 step = st.sidebar.radio(
     "Navigation",
-    ["1 - GTFS Data", "2 - POT Framework", "3 - Priorities", "4 - Run & Results"],
+    ["1 - Données GTFS", "2 - Cadre POT", "3 - Priorités", "4 - Exécution & Résultats"],
     index=0,
 )
 
@@ -494,19 +494,19 @@ st.sidebar.caption("Transdev")
 # STEP 1 — GTFS DATA
 # ============================================================================
 
-if step == "1 - GTFS Data":
-    st.header("Step 1: GTFS Data")
+if step == "1 - Données GTFS":
+    st.header("Étape 1 : Données GTFS")
     st.markdown("""
-    Upload your GTFS files or use the **pre-loaded Poissy GTFS** dataset.
-    The GTFS provides bus stop locations, routes, and schedules that form the
-    network topology for optimisation.
+    Téléversez vos fichiers GTFS ou utilisez le jeu de données **GTFS Poissy préchargé**.
+    Le GTFS fournit les localisations des arrêts de bus, les lignes et les horaires qui
+    forment la topologie du réseau pour l'optimisation.
     """)
 
-    use_default = st.toggle("Use pre-loaded Poissy GTFS", value=True)
+    use_default = st.toggle("Utiliser le GTFS Poissy préchargé", value=True)
 
     if use_default:
         gtfs_path = GTFS_DIR
-        st.success(f"Using pre-loaded GTFS from `{gtfs_path}`")
+        st.success(f"Utilisation du GTFS préchargé depuis `{gtfs_path}`")
 
         # Show GTFS summary
         stops_df = pd.read_csv(gtfs_path / "stops.txt")
@@ -514,24 +514,24 @@ if step == "1 - GTFS Data":
         trips_df = pd.read_csv(gtfs_path / "trips.txt")
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Stops", len(stops_df))
-        col2.metric("Routes", len(routes_df))
-        col3.metric("Trips", len(trips_df))
+        col1.metric("Arrêts", len(stops_df))
+        col2.metric("Lignes", len(routes_df))
+        col3.metric("Voyages", len(trips_df))
 
-        st.subheader("Bus Stops")
+        st.subheader("Arrêts de bus")
         st.dataframe(
             stops_df[["stop_id", "stop_name", "stop_lat", "stop_lon"]],
             use_container_width=True, height=300,
         )
 
         # Quick map of stops
-        st.subheader("Stop Locations")
+        st.subheader("Localisation des arrêts")
         st.map(stops_df.rename(columns={"stop_lat": "latitude", "stop_lon": "longitude"}))
 
         st.session_state["gtfs_path"] = str(gtfs_path)
 
     else:
-        st.info("Upload the 7 required GTFS files below:")
+        st.info("Téléversez ci-dessous les 7 fichiers GTFS requis :")
         uploaded = {}
         for fname in GTFS_REQUIRED:
             f = st.file_uploader(fname, type=["txt", "csv"], key=f"gtfs_{fname}")
@@ -541,98 +541,98 @@ if step == "1 - GTFS Data":
         if len(uploaded) == len(GTFS_REQUIRED):
             custom_dir = DEMO_DIR / "data" / "GTFS_custom"
             save_uploaded_gtfs(uploaded, custom_dir)
-            st.success(f"All {len(GTFS_REQUIRED)} GTFS files uploaded!")
+            st.success(f"Les {len(GTFS_REQUIRED)} fichiers GTFS ont été téléversés !")
 
             stops_df = pd.read_csv(custom_dir / "stops.txt")
-            st.metric("Stops loaded", len(stops_df))
+            st.metric("Arrêts chargés", len(stops_df))
             st.map(stops_df.rename(columns={"stop_lat": "latitude", "stop_lon": "longitude"}))
 
             st.session_state["gtfs_path"] = str(custom_dir)
         elif uploaded:
             missing = [f for f in GTFS_REQUIRED if f not in uploaded]
-            st.warning(f"Missing files: {', '.join(missing)}")
+            st.warning(f"Fichiers manquants : {', '.join(missing)}")
 
 
 # ============================================================================
 # STEP 2 — POT FRAMEWORK
 # ============================================================================
 
-elif step == "2 - POT Framework":
-    st.header("Step 2: POT Data Framework")
+elif step == "2 - Cadre POT":
+    st.header("Étape 2 : Cadre de données POT")
     st.markdown("""
-    The **POM (Potentiel Offre Mobilite)** framework provides demand potential
-    for each grid cell across 4 time periods.  This is pre-computed from
-    INSEE population/employment data and calibrated for Poissy.
+    Le cadre **POM (Potentiel Offre Mobilité)** fournit le potentiel de demande
+    pour chaque cellule de la grille sur 4 périodes horaires. Il est pré-calculé
+    à partir des données INSEE de population/emploi et calibré pour Poissy.
     """)
 
     if POM_CSV.exists():
         pom_df = pd.read_csv(POM_CSV)
-        st.success(f"POM data loaded: **{len(pom_df)} grid cells**")
+        st.success(f"Données POM chargées : **{len(pom_df)} cellules de grille**")
 
-        st.subheader("Period Potentials")
+        st.subheader("Potentiels par période")
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("pot_hp (peak)", f"{pom_df['pot_hp'].sum():.0f}", help="Rush hour potential")
-        col2.metric("pot_hc (off-peak)", f"{pom_df['pot_hc'].sum():.0f}", help="Heure creuse potential")
-        col3.metric("pot_soir (evening)", f"{pom_df['pot_soir'].sum():.0f}", help="Evening potential")
-        col4.metric("pot_nuit (night)", f"{pom_df['pot_nuit'].sum():.0f}", help="Night potential")
+        col1.metric("pot_hp (pointe)", f"{pom_df['pot_hp'].sum():.0f}", help="Potentiel heure de pointe")
+        col2.metric("pot_hc (creuse)", f"{pom_df['pot_hc'].sum():.0f}", help="Potentiel heure creuse")
+        col3.metric("pot_soir (soir)", f"{pom_df['pot_soir'].sum():.0f}", help="Potentiel soirée")
+        col4.metric("pot_nuit (nuit)", f"{pom_df['pot_nuit'].sum():.0f}", help="Potentiel nuit")
 
-        st.subheader("Period Weights (Joint Optimisation)")
+        st.subheader("Pondérations par période (optimisation conjointe)")
         st.markdown("""
-        | Period | Weight | Description |
-        |--------|--------|-------------|
-        | pot_hp | **0.40** | Peak hour (rush) |
-        | pot_hc | **0.30** | Off-peak |
-        | pot_soir | **0.20** | Evening |
-        | pot_nuit | **0.10** | Night |
+        | Période | Pondération | Description |
+        |---------|-------------|-------------|
+        | pot_hp | **0.40** | Heure de pointe |
+        | pot_hc | **0.30** | Heure creuse |
+        | pot_soir | **0.20** | Soirée |
+        | pot_nuit | **0.10** | Nuit |
         """)
 
-        st.subheader("POM Data Sample")
+        st.subheader("Échantillon des données POM")
         st.dataframe(pom_df.head(20), use_container_width=True)
 
-        st.subheader("Demand Distribution")
-        tab1, tab2 = st.tabs(["Peak Hour (pot_hp)", "All Periods"])
+        st.subheader("Distribution de la demande")
+        tab1, tab2 = st.tabs(["Heure de pointe (pot_hp)", "Toutes les périodes"])
         with tab1:
             st.bar_chart(pom_df["pot_hp"].sort_values(ascending=False).reset_index(drop=True))
         with tab2:
             st.line_chart(pom_df[["pot_hp", "pot_hc", "pot_soir", "pot_nuit"]].sort_values(
                 "pot_hp", ascending=False).reset_index(drop=True))
 
-        st.subheader("Spatial Distribution")
+        st.subheader("Distribution spatiale")
         map_df = pom_df[["y", "x", "pot_hp"]].rename(columns={"y": "latitude", "x": "longitude"})
         st.map(map_df, size="pot_hp")
 
     else:
-        st.error("POM CSV not found. Please place `pom_poissy.csv` in the data/ directory.")
+        st.error("CSV POM introuvable. Veuillez placer `pom_poissy.csv` dans le répertoire data/.")
 
 
 # ============================================================================
 # STEP 3 — PRIORITIES
 # ============================================================================
 
-elif step == "3 - Priorities":
-    st.header("Step 3: Optimisation Priorities")
+elif step == "3 - Priorités":
+    st.header("Étape 3 : Priorités d'optimisation")
     st.markdown("""
-    Choose how to balance the two main objectives:
-    - **Adequation**: Match supply (routes + frequency) to demand at each stop
-    - **Direct Transfers**: Maximise direct connections (d0) and minimise transfers
+    Choisissez comment équilibrer les deux objectifs principaux :
+    - **Adéquation** : Faire correspondre l'offre (lignes + fréquence) à la demande à chaque arrêt
+    - **Correspondances directes** : Maximiser les liaisons directes (d0) et minimiser les correspondances
     """)
 
-    st.subheader("Priority Mode")
+    st.subheader("Mode de priorité")
     priority = st.radio(
-        "Select your focus:",
+        "Sélectionnez votre priorité :",
         [
-            "Balanced (recommended)",
-            "Focus on Adequation",
-            "Focus on Direct Transfers",
-            "Custom",
+            "Équilibré (recommandé)",
+            "Priorité à l'adéquation",
+            "Priorité aux correspondances directes",
+            "Personnalisé",
         ],
         index=0,
-        help="This adjusts the objective weights in the Gurobi MIP model",
+        help="Ajuste les pondérations d'objectif dans le modèle MIP Gurobi",
     )
 
     # Preset configurations (tuned for fast demo runs)
     PRESETS = {
-        "Balanced (recommended)": {
+        "Équilibré (recommandé)": {
             "alpha_pass": 1.0, "alpha_adeq": 0.1, "alpha_oper": 0.01,
             "use_new_od": True, "route_choice": True,
             "freq_opt": True, "route_rules": True,
@@ -641,7 +641,7 @@ elif step == "3 - Priorities":
             "initial_count": 1000, "pricing_count": 500,
             "ls_rounds": 3,
         },
-        "Focus on Adequation": {
+        "Priorité à l'adéquation": {
             "alpha_pass": 0.5, "alpha_adeq": 0.5, "alpha_oper": 0.01,
             "use_new_od": True, "route_choice": False,
             "freq_opt": False, "route_rules": False,
@@ -650,7 +650,7 @@ elif step == "3 - Priorities":
             "initial_count": 1000, "pricing_count": 500,
             "ls_rounds": 3,
         },
-        "Focus on Direct Transfers": {
+        "Priorité aux correspondances directes": {
             "alpha_pass": 1.0, "alpha_adeq": 0.01, "alpha_oper": 0.01,
             "use_new_od": False, "route_choice": True,
             "freq_opt": True, "route_rules": True,
@@ -661,38 +661,38 @@ elif step == "3 - Priorities":
         },
     }
 
-    if priority == "Custom":
-        st.subheader("Custom Weights")
+    if priority == "Personnalisé":
+        st.subheader("Pondérations personnalisées")
         col1, col2, col3 = st.columns(3)
-        alpha_pass = col1.slider("Alpha Passenger", 0.0, 2.0, 1.0, 0.05,
-                                 help="Weight on travel time minimisation")
-        alpha_adeq = col2.slider("Alpha Adequation", 0.0, 1.0, 0.1, 0.01,
-                                 help="Weight on supply-demand balance")
-        alpha_oper = col3.slider("Alpha Operator", 0.0, 0.5, 0.01, 0.005,
-                                 help="Weight on operator cost (vehicle-hours)")
+        alpha_pass = col1.slider("Alpha Passager", 0.0, 2.0, 1.0, 0.05,
+                                 help="Pondération sur la minimisation du temps de trajet")
+        alpha_adeq = col2.slider("Alpha Adéquation", 0.0, 1.0, 0.1, 0.01,
+                                 help="Pondération sur l'équilibre offre-demande")
+        alpha_oper = col3.slider("Alpha Opérateur", 0.0, 0.5, 0.01, 0.005,
+                                 help="Pondération sur le coût opérateur (véhicules-heures)")
 
-        st.subheader("Model Options")
+        st.subheader("Options du modèle")
         col1, col2 = st.columns(2)
-        use_new_od = col1.checkbox("New P/A Gravity OD", value=True,
-                                   help="Use production-attraction gravity model")
-        route_choice = col1.checkbox("Route Choice (top-k)", value=True,
-                                     help="Allow route choice among top-k direct routes")
-        freq_opt = col2.checkbox("Frequency Optimisation", value=True,
-                                 help="Optimise frequencies (vs fixed f_min)")
-        route_rules = col2.checkbox("Route Quality Rules", value=True,
-                                    help="Penalise loops, tiroirs, cul-de-sacs")
-        print_z = col1.checkbox("Print Z Evolution", value=False,
-                                help="Print Z component table in console across iterations")
+        use_new_od = col1.checkbox("Nouveau modèle OD P/A gravitaire", value=True,
+                                   help="Utiliser le modèle gravitaire production-attraction")
+        route_choice = col1.checkbox("Choix de ligne (top-k)", value=True,
+                                     help="Autoriser le choix de ligne parmi les top-k lignes directes")
+        freq_opt = col2.checkbox("Optimisation des fréquences", value=True,
+                                 help="Optimiser les fréquences (vs f_min fixé)")
+        route_rules = col2.checkbox("Règles de qualité des lignes", value=True,
+                                    help="Pénaliser les boucles, tiroirs, culs-de-sac")
+        print_z = col1.checkbox("Afficher l'évolution de Z", value=False,
+                                help="Afficher le tableau des composants Z dans la console au fil des itérations")
 
-        st.subheader("Solver Settings")
+        st.subheader("Paramètres du solveur")
         col1, col2, col3 = st.columns(3)
-        min_routes = col1.number_input("Min Routes", 1, 25, 3)
-        max_routes = col2.number_input("Max Routes", 3, 30, 15)
-        time_limit = col3.number_input("Time Limit (s)", 30, 1200, 60, step=30)
+        min_routes = col1.number_input("Lignes min", 1, 25, 3)
+        max_routes = col2.number_input("Lignes max", 3, 30, 15)
+        time_limit = col3.number_input("Limite de temps (s)", 30, 1200, 60, step=30)
         col1, col2, col3 = st.columns(3)
-        max_iter = col1.slider("CG Iterations", 1, 10, 1)
-        initial_count = col2.number_input("Initial Candidates", 500, 10000, 1000, step=500)
-        ls_rounds = col3.slider("Local Search Rounds", 0, 20, 3)
+        max_iter = col1.slider("Itérations CG", 1, 10, 1)
+        initial_count = col2.number_input("Candidats initiaux", 500, 10000, 1000, step=500)
+        ls_rounds = col3.slider("Tours de recherche locale", 0, 20, 3)
 
         params = {
             "alpha_pass": alpha_pass, "alpha_adeq": alpha_adeq,
@@ -710,38 +710,38 @@ elif step == "3 - Priorities":
         # Display the preset
         st.subheader("Configuration")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Alpha Passenger", f"{params['alpha_pass']:.2f}")
-        col2.metric("Alpha Adequation", f"{params['alpha_adeq']:.2f}")
-        col3.metric("Alpha Operator", f"{params['alpha_oper']:.3f}")
+        col1.metric("Alpha Passager", f"{params['alpha_pass']:.2f}")
+        col2.metric("Alpha Adéquation", f"{params['alpha_adeq']:.2f}")
+        col3.metric("Alpha Opérateur", f"{params['alpha_oper']:.3f}")
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("New OD Model", "Yes" if params["use_new_od"] else "No")
-        col2.metric("Route Choice", "Yes" if params["route_choice"] else "No")
-        col3.metric("Freq. Optim.", "Yes" if params["freq_opt"] else "No")
-        col4.metric("Route Rules", "Yes" if params["route_rules"] else "No")
+        col1.metric("Nouveau modèle OD", "Oui" if params["use_new_od"] else "Non")
+        col2.metric("Choix de ligne", "Oui" if params["route_choice"] else "Non")
+        col3.metric("Optim. fréq.", "Oui" if params["freq_opt"] else "Non")
+        col4.metric("Règles de ligne", "Oui" if params["route_rules"] else "Non")
 
     st.session_state["params"] = params
 
     # Show what to expect
     st.markdown("---")
-    st.subheader("Expected Behaviour")
-    if priority == "Focus on Adequation":
+    st.subheader("Comportement attendu")
+    if priority == "Priorité à l'adéquation":
         st.info("""
-        **Adequation focus** maximises the supply-demand balance.
-        Expect higher adequation scores (~77%) but potentially more transfers.
-        The model will spread routes evenly across demand centres.
+        **La priorité à l'adéquation** maximise l'équilibre offre-demande.
+        Attendez-vous à des scores d'adéquation plus élevés (~77 %) mais potentiellement à plus de correspondances.
+        Le modèle répartira les lignes uniformément sur les pôles de demande.
         """)
-    elif priority == "Focus on Direct Transfers":
+    elif priority == "Priorité aux correspondances directes":
         st.info("""
-        **Direct transfer focus** maximises d0 (direct connections).
-        Expect very high d0 (~99%) and low ATT (~2 min) but adequation may
-        drop (~66%).  The model concentrates routes on high-demand OD pairs.
+        **La priorité aux correspondances directes** maximise d0 (liaisons directes).
+        Attendez-vous à un d0 très élevé (~99 %) et un ATT faible (~2 min), mais l'adéquation peut
+        baisser (~66 %). Le modèle concentre les lignes sur les paires OD à forte demande.
         """)
     else:
         st.info("""
-        **Balanced mode** finds a good trade-off between adequation and transfers.
-        Expect d0 ~27%, ATT ~17 min, adequation ~74%.
-        Route quality rules ensure practical, non-looping routes.
+        **Le mode équilibré** trouve un bon compromis entre adéquation et correspondances.
+        Attendez-vous à d0 ~27 %, ATT ~17 min, adéquation ~74 %.
+        Les règles de qualité des lignes garantissent des lignes pratiques, sans boucles.
         """)
 
 
@@ -749,27 +749,27 @@ elif step == "3 - Priorities":
 # STEP 4 — RUN & RESULTS
 # ============================================================================
 
-elif step == "4 - Run & Results":
-    st.header("Step 4: Run Optimisation & Results")
+elif step == "4 - Exécution & Résultats":
+    st.header("Étape 4 : Exécution de l'optimisation & résultats")
 
     params = st.session_state.get("params")
     gtfs_path = st.session_state.get("gtfs_path", str(GTFS_DIR))
 
     if params is None:
-        st.warning("Please configure priorities in Step 3 first.")
+        st.warning("Veuillez d'abord configurer les priorités à l'étape 3.")
         st.stop()
 
     # Show current config
-    with st.expander("Current Configuration", expanded=False):
+    with st.expander("Configuration actuelle", expanded=False):
         st.json(params)
 
     # Run button
-    if st.button("Run Optimisation", type="primary", use_container_width=True):
+    if st.button("Lancer l'optimisation", type="primary", use_container_width=True):
 
         # ----------------------------------------------------------------
         # Import Capt-Temp pipeline modules
         # ----------------------------------------------------------------
-        progress = st.progress(0, text="Importing pipeline modules...")
+        progress = st.progress(0, text="Importation des modules du pipeline...")
 
         try:
             import config as cfg
@@ -783,15 +783,15 @@ elif step == "4 - Run & Results":
             from geocapt_localsearch import local_search_joint
             from geocapt_route_quality import build_node_coords
         except ImportError as e:
-            st.error(f"Failed to import pipeline modules: {e}")
-            st.info(f"Make sure Capt-Temp is at: `{CAPT_TEMP_DIR}`")
+            st.error(f"Échec de l'importation des modules du pipeline : {e}")
+            st.info(f"Assurez-vous que Capt-Temp se trouve à : `{CAPT_TEMP_DIR}`")
             st.stop()
 
         # ----------------------------------------------------------------
         # Phase 1: Load data for all periods
         # ----------------------------------------------------------------
-        progress.progress(5, text="Phase 1: Loading data for all periods...")
-        status = st.status("Running joint multi-period optimisation...", expanded=True)
+        progress.progress(5, text="Phase 1 : Chargement des données pour toutes les périodes...")
+        status = st.status("Exécution de l'optimisation conjointe multi-période...", expanded=True)
 
         ALL_BANDS = ["pot_hp", "pot_hc", "pot_soir", "pot_nuit"]
         period_weights = {
@@ -806,7 +806,7 @@ elif step == "4 - Run & Results":
         t_start = time.time()
 
         for i, band in enumerate(ALL_BANDS):
-            status.write(f"Loading {band}...")
+            status.write(f"Chargement de {band}...")
             data = load_all(
                 csv_path=str(POM_CSV),
                 pot_col=band,
@@ -817,9 +817,9 @@ elif step == "4 - Run & Results":
                 G = data["G"]
                 nodes = data["nodes"]
                 prox = data["prox"]
-            status.write(f"  {data['n']} nodes, {len(data['demand_triples'])} OD pairs")
+            status.write(f"  {data['n']} nœuds, {len(data['demand_triples'])} paires OD")
 
-        progress.progress(20, text="Phase 1 complete. Starting optimisation...")
+        progress.progress(20, text="Phase 1 terminée. Démarrage de l'optimisation...")
 
         sample_data = all_data[ALL_BANDS[0]]
         is_gtfs = sample_data.get("mode") == "gtfs_osm"
@@ -830,8 +830,8 @@ elif step == "4 - Run & Results":
         # ----------------------------------------------------------------
         # Phase 2-3: Joint column generation
         # ----------------------------------------------------------------
-        progress.progress(25, text="Phase 2-3: Joint column generation...")
-        status.write("Running column generation (this may take several minutes)...")
+        progress.progress(25, text="Phase 2-3 : Génération conjointe de colonnes...")
+        status.write("Exécution de la génération de colonnes (peut prendre plusieurs minutes)...")
 
         eff_top_k = 0 if not params["route_choice"] else cfg.TOP_K_DIRECT
         eff_alpha_quality = 0.0 if not params["route_rules"] else cfg.ALPHA_QUALITY
@@ -866,17 +866,17 @@ elif step == "4 - Run & Results":
         freqs_pp = result.get("freqs_per_period")
 
         if selected is None:
-            st.error("No feasible solution found. Try adjusting parameters.")
+            st.error("Aucune solution réalisable trouvée. Essayez d'ajuster les paramètres.")
             st.stop()
 
-        progress.progress(70, text="Column generation done. Running local search...")
+        progress.progress(70, text="Génération de colonnes terminée. Exécution de la recherche locale...")
 
         # ----------------------------------------------------------------
         # Phase 4: Local search refinement
         # ----------------------------------------------------------------
         ls_rounds = params.get("ls_rounds", 3)
         if ls_rounds > 0:
-            status.write(f"Running local search refinement ({ls_rounds} rounds)...")
+            status.write(f"Exécution du raffinement par recherche locale ({ls_rounds} tours)...")
             periods_ls = {
                 p: {"node_pot": all_data[p]["node_pot"],
                     "node_q_min": all_data[p]["node_q_min"],
@@ -892,7 +892,7 @@ elif step == "4 - Run & Results":
                 max_rounds=ls_rounds,
             )
         else:
-            status.write("Skipping local search.")
+            status.write("Recherche locale ignorée.")
 
         # ----------------------------------------------------------------
         # Phase 4b: Final axis-sort on selected routes
@@ -902,14 +902,14 @@ elif step == "4 - Run & Results":
         # along its principal axis so the rendered polyline follows a clean
         # corridor direction without zigzag.  This preserves the SET of stops
         # on each route (so direct OD coverage is unchanged), only the order.
-        status.write("Axis-sorting final routes for clean visuals...")
+        status.write("Tri par axe des lignes finales pour une meilleure lisibilité...")
         from geocapt_routes import _axis_sort_route
         points_for_sort = all_data[ALL_BANDS[0]].get("points")
         nc_sort = build_node_coords(points_for_sort) if points_for_sort else {}
         if nc_sort:
             selected = [_axis_sort_route(r, nc_sort) for r in selected]
 
-        progress.progress(85, text="Evaluating results...")
+        progress.progress(85, text="Évaluation des résultats...")
 
         # ----------------------------------------------------------------
         # Phase 5: Evaluation
@@ -957,7 +957,7 @@ elif step == "4 - Run & Results":
                 stop_names[nid] = p.get("stop_name", f"Stop {nid}")
 
         elapsed = time.time() - t_start
-        progress.progress(95, text="Generating map...")
+        progress.progress(95, text="Génération de la carte...")
 
         # Per-period evaluation
         period_results = {}
@@ -988,15 +988,15 @@ elif step == "4 - Run & Results":
             "history": result.get("history", []),
         }
 
-        progress.progress(100, text="Done!")
-        status.update(label=f"Optimisation complete in {elapsed:.0f}s", state="complete")
+        progress.progress(100, text="Terminé !")
+        status.update(label=f"Optimisation terminée en {elapsed:.0f} s", state="complete")
 
     # ----------------------------------------------------------------
     # Display results (persistent across reruns)
     # ----------------------------------------------------------------
     results = st.session_state.get("results")
     if results is None:
-        st.info("Click **Run Optimisation** to start.")
+        st.info("Cliquez sur **Lancer l'optimisation** pour commencer.")
         st.stop()
 
     st.markdown("---")
@@ -1006,39 +1006,39 @@ elif step == "4 - Run & Results":
     a = results["peak_adeq"]
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("d0 (direct)", f"{m['d0']:.1f}%")
-    c2.metric("d1 (1 transfer)", f"{m['d1']:.1f}%")
+    c2.metric("d1 (1 correspondance)", f"{m['d1']:.1f}%")
     c3.metric("d2+", f"{m.get('d2', 0) + m.get('d3+', 0):.1f}%")
-    c4.metric("dun (unserved)", f"{m['dun']:.1f}%")
+    c4.metric("dun (non desservi)", f"{m['dun']:.1f}%")
     c5.metric("ATT (min)", f"{m['ATT']:.2f}")
-    c6.metric("Adequation", f"{a['pct_ok']:.1f}%")
-    c7.metric("Routes", f"{results['n_routes']}")
+    c6.metric("Adéquation", f"{a['pct_ok']:.1f}%")
+    c7.metric("Lignes", f"{results['n_routes']}")
 
     # Tabs for different views
     tab_map, tab_periods, tab_routes, tab_history = st.tabs([
-        "Interactive Map", "Per-Period Results", "Route Details", "CG History",
+        "Carte interactive", "Résultats par période", "Détails des lignes", "Historique CG",
     ])
 
     with tab_map:
-        st.subheader("Interactive Route Map")
+        st.subheader("Carte interactive des lignes")
         html_str = generate_dashboard_html(
             results["selected"], results["freqs_pp"]["pot_hp"],
             results["node_coords"], results["G"],
             results["peak_metrics"], results["peak_adeq"],
             results["adeq_node_status"], results["stop_names"],
-            title=f"GeoCapt Demo — {results['n_routes']} routes (pot_hp)",
+            title=f"GeoCapt Demo — {results['n_routes']} lignes (pot_hp)",
         )
         st.components.v1.html(html_str, height=700, scrolling=True)
 
         # Download button for the HTML
         st.download_button(
-            "Download HTML Map",
+            "Télécharger la carte HTML",
             html_str,
             file_name="geocapt_demo_result.html",
             mime="text/html",
         )
 
     with tab_periods:
-        st.subheader("Per-Period Evaluation")
+        st.subheader("Évaluation par période")
 
         # Build comparison table
         rows = []
@@ -1050,66 +1050,66 @@ elif step == "4 - Run & Results":
             pa = pr["adeq"]
             avg_f = sum(pr["freqs"]) / len(pr["freqs"]) if pr["freqs"] else 0
             rows.append({
-                "Period": band,
+                "Période": band,
                 "d0 %": round(pm["d0"], 1),
                 "d1 %": round(pm["d1"], 1),
                 "d2+ %": round(pm.get("d2", 0) + pm.get("d3+", 0), 1),
                 "dun %": round(pm["dun"], 2),
                 "ATT (min)": round(pm["ATT"], 2),
-                "Adeq %": round(pa["pct_ok"], 1),
-                "Over": pa["n_over"],
-                "Under": pa["n_under"],
-                "Avg Freq": round(avg_f, 2),
+                "Adéq %": round(pa["pct_ok"], 1),
+                "Sur-offre": pa["n_over"],
+                "Sous-offre": pa["n_under"],
+                "Fréq. moy.": round(avg_f, 2),
             })
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         # Frequency table
-        st.subheader("Per-Period Frequency Table")
+        st.subheader("Tableau des fréquences par période")
         freq_rows = []
         for idx, route in enumerate(results["selected"]):
-            row = {"Route": f"R{idx+1}", "Stops": len(route)}
+            row = {"Ligne": f"R{idx+1}", "Arrêts": len(route)}
             for band in ["pot_hp", "pot_hc", "pot_soir", "pot_nuit"]:
                 row[band] = round(results["freqs_pp"][band][idx], 2)
             freq_rows.append(row)
         st.dataframe(pd.DataFrame(freq_rows), use_container_width=True, hide_index=True)
 
     with tab_routes:
-        st.subheader("Selected Routes")
+        st.subheader("Lignes sélectionnées")
         for idx, route in enumerate(results["selected"]):
             freq = results["freqs_pp"]["pot_hp"][idx]
             color = _ROUTE_COLOURS[idx % len(_ROUTE_COLOURS)]
             names = [results["stop_names"].get(n, f"#{n}") for n in route]
             with st.expander(
-                f"Route {idx+1} — {len(route)} stops, f={freq:.1f}/h",
+                f"Ligne {idx+1} — {len(route)} arrêts, f={freq:.1f}/h",
                 expanded=False,
             ):
-                st.markdown(f"**Itinerary:** {' -> '.join(names)}")
-                st.markdown(f"**Node IDs:** {' - '.join(map(str, route))}")
+                st.markdown(f"**Itinéraire :** {' -> '.join(names)}")
+                st.markdown(f"**IDs des nœuds :** {' - '.join(map(str, route))}")
 
         # Coverage stats
         covered = set()
         for r in results["selected"]:
             covered.update(r)
         total_nodes = len(results["node_coords"])
-        st.metric("Node Coverage", f"{len(covered)}/{total_nodes} ({100*len(covered)/total_nodes:.0f}%)")
+        st.metric("Couverture des nœuds", f"{len(covered)}/{total_nodes} ({100*len(covered)/total_nodes:.0f}%)")
 
     with tab_history:
-        st.subheader("Column Generation History")
+        st.subheader("Historique de la génération de colonnes")
         hist = results.get("history", [])
         if hist:
             hist_rows = []
             for h in hist:
                 impr = f"{h['improvement']:.2%}" if h["iteration"] > 1 else "---"
                 hist_rows.append({
-                    "Iteration": h["iteration"],
-                    "Pool Size": h["pool_size"],
-                    "Objective": round(h["obj_value"], 2),
-                    "Improvement": impr,
-                    "Time (s)": round(h["time"], 0),
+                    "Itération": h["iteration"],
+                    "Taille du pool": h["pool_size"],
+                    "Objectif": round(h["obj_value"], 2),
+                    "Amélioration": impr,
+                    "Temps (s)": round(h["time"], 0),
                 })
             st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
         else:
-            st.info("No history available.")
+            st.info("Aucun historique disponible.")
 
-        st.metric("Total Time", f"{results['elapsed']:.0f}s")
+        st.metric("Temps total", f"{results['elapsed']:.0f} s")
