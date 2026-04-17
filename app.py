@@ -407,8 +407,10 @@ def generate_dashboard_html(
 </div>
 <script>
 var map = L.map('map').setView([{avg_lat}, {avg_lon}], 14);
-L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-  attribution: '&copy; OpenStreetMap'
+L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  subdomains: 'abcd',
+  maxZoom: 20
 }}).addTo(map);
 var routeLayers = {{}};
 """
@@ -434,7 +436,7 @@ L.circleMarker([{lat}, {lon}], {{
     # Route polylines
     for ri in route_infos:
         coords_str = ",".join(ri["coords"])
-        weight = max(2, min(6, ri["freq"] / 3))
+        weight = max(4, min(8, ri["freq"] / 2))
         popup_stops = " &rarr; ".join(_js_esc(n) for n in ri["stop_names"])
         popup_text = _js_esc(
             f"<b>Ligne {ri['idx']}</b><br>"
@@ -443,7 +445,7 @@ L.circleMarker([{lat}, {lon}], {{
         )
         html += f"""
 routeLayers[{ri['idx']}] = L.polyline([{coords_str}], {{
-  color: '{ri['color']}', weight: {weight:.0f}, opacity: 0.75
+  color: '{ri['color']}', weight: {weight:.0f}, opacity: 1.0
 }}).addTo(map).bindPopup('{popup_text}');
 """
 
@@ -452,15 +454,15 @@ var selectedRoute = null;
 var defaultWeights = {};
 for (var id in routeLayers) { defaultWeights[id] = routeLayers[id].options.weight; }
 function clearSelection() {
-  for (var id in routeLayers) { routeLayers[id].setStyle({weight: defaultWeights[id], opacity: 0.75}); }
+  for (var id in routeLayers) { routeLayers[id].setStyle({weight: defaultWeights[id], opacity: 1.0}); }
   selectedRoute = null;
   document.querySelectorAll('.route-row').forEach(function(r) { r.classList.remove('selected'); });
 }
 function selectRoute(id) {
   if (selectedRoute === id) { clearSelection(); return; }
   clearSelection(); selectedRoute = id;
-  for (var rid in routeLayers) { routeLayers[rid].setStyle({weight: defaultWeights[rid], opacity: 0.15}); }
-  routeLayers[id].setStyle({weight: 8, opacity: 1.0}); routeLayers[id].bringToFront();
+  for (var rid in routeLayers) { routeLayers[rid].setStyle({weight: defaultWeights[rid], opacity: 0.2}); }
+  routeLayers[id].setStyle({weight: 9, opacity: 1.0}); routeLayers[id].bringToFront();
   var row = document.querySelector('.route-row[data-route="' + id + '"]');
   if (row) row.classList.add('selected');
 }
