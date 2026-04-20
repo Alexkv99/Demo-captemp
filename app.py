@@ -386,7 +386,6 @@ def generate_dashboard_html(
   <div class="metric"><div class="metric-val">{m_dun:.1f}%</div><div class="metric-lbl">dun non desservi</div></div>
   <div class="metric"><div class="metric-val">{m_att:.2f}</div><div class="metric-lbl">ATT (min)</div></div>
   <div class="metric"><div class="metric-val">{m_pct_ok:.1f}%</div><div class="metric-lbl">Adéquation</div></div>
-  <div class="metric"><div class="metric-val">{total_veh_min:.0f}</div><div class="metric-lbl">Véh-min/h</div></div>
 </div>
 <div id="main">
 <div id="map"></div>
@@ -639,34 +638,34 @@ elif step == "3 - Priorités":
             "use_new_od": True, "route_choice": True,
             "freq_opt": True, "route_rules": True,
             "min_routes": 3, "max_routes": 15,
-            "time_limit": 60, "max_iter": 1,
-            "initial_count": 1000, "pricing_count": 500,
-            "ls_rounds": 3,
+            "time_limit": 450, "max_iter": 3,
+            "initial_count": 5000, "pricing_count": 500,
+            "ls_rounds": 7,
         },
         "Priorité à l'adéquation": {
             "alpha_pass": 0.5, "alpha_adeq": 0.5, "alpha_oper": 0.01,
             "use_new_od": True, "route_choice": False,
             "freq_opt": False, "route_rules": False,
             "min_routes": 3, "max_routes": 15,
-            "time_limit": 60, "max_iter": 1,
-            "initial_count": 1000, "pricing_count": 500,
-            "ls_rounds": 3,
+            "time_limit": 450, "max_iter": 3,
+            "initial_count": 5000, "pricing_count": 500,
+            "ls_rounds": 7,
         },
         "Priorité aux correspondances directes": {
             "alpha_pass": 1.0, "alpha_adeq": 0.01, "alpha_oper": 0.01,
             "use_new_od": False, "route_choice": True,
             "freq_opt": True, "route_rules": True,
             "min_routes": 3, "max_routes": 15,
-            "time_limit": 60, "max_iter": 1,
-            "initial_count": 1000, "pricing_count": 500,
-            "ls_rounds": 3,
+            "time_limit": 450, "max_iter": 3,
+            "initial_count": 5000, "pricing_count": 500,
+            "ls_rounds": 7,
         },
     }
 
     if priority == "Personnalisé":
         st.subheader("Pondérations personnalisées")
         col1, col2, col3 = st.columns(3)
-        alpha_pass = col1.slider("Alpha Passager", 0.0, 2.0, 1.0, 0.05,
+        alpha_pass = col1.slider("Alpha Passager", 0.0, 10.0, 1.0, 0.05,
                                  help="Pondération sur la minimisation du temps de trajet")
         alpha_adeq = col2.slider("Alpha Adéquation", 0.0, 1.0, 0.1, 0.01,
                                  help="Pondération sur l'équilibre offre-demande")
@@ -683,18 +682,16 @@ elif step == "3 - Priorités":
                                  help="Optimiser les fréquences (vs f_min fixé)")
         route_rules = col2.checkbox("Règles de qualité des lignes", value=True,
                                     help="Pénaliser les boucles, tiroirs, culs-de-sac")
-        print_z = col1.checkbox("Afficher l'évolution de Z", value=False,
-                                help="Afficher le tableau des composants Z dans la console au fil des itérations")
 
         st.subheader("Paramètres du solveur")
         col1, col2, col3 = st.columns(3)
         min_routes = col1.number_input("Lignes min", 1, 25, 3)
         max_routes = col2.number_input("Lignes max", 3, 30, 15)
-        time_limit = col3.number_input("Limite de temps (s)", 30, 1200, 60, step=30)
+        time_limit = col3.number_input("Limite de temps (s)", 30, 1200, 450, step=30)
         col1, col2, col3 = st.columns(3)
-        max_iter = col1.slider("Itérations CG", 1, 10, 1)
-        initial_count = col2.number_input("Candidats initiaux", 500, 10000, 1000, step=500)
-        ls_rounds = col3.slider("Tours de recherche locale", 0, 20, 3)
+        max_iter = col1.slider("Itérations CG", 1, 10, 3)
+        initial_count = col2.number_input("Candidats initiaux", 500, 10000, 5000, step=500)
+        ls_rounds = col3.slider("Tours de recherche locale", 0, 20, 7)
 
         params = {
             "alpha_pass": alpha_pass, "alpha_adeq": alpha_adeq,
@@ -704,7 +701,6 @@ elif step == "3 - Priorités":
             "max_routes": max_routes, "time_limit": time_limit,
             "max_iter": max_iter, "initial_count": initial_count,
             "pricing_count": 500, "ls_rounds": ls_rounds,
-            "print_z": print_z,
         }
     else:
         params = PRESETS[priority]
@@ -857,7 +853,6 @@ elif step == "4 - Exécution & Résultats":
             min_improvement=0.001,
             seed=42,
             verbose=True,
-            print_z=params.get("print_z", False),
             route_gen_G=route_gen_G,
             min_route_len=min_rl,
             max_route_len=max_rl,
