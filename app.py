@@ -881,12 +881,18 @@ elif step == "4 - Exécution & Résultats":
                 for p in ALL_BANDS
             }
 
+            ls_points = sample_data.get("points")
+            ls_node_coords = build_node_coords(ls_points) if ls_points else None
             selected, freqs_pp = local_search_joint(
                 selected, freqs_pp,
                 G, nodes, periods_ls, prox, period_weights,
                 alpha_adeq=params["alpha_adeq"],
                 alpha_oper=params["alpha_oper"],
                 max_rounds=ls_rounds,
+                max_route_len=max_rl,
+                node_coords=ls_node_coords,
+                route_gen_G=route_gen_G,
+                alpha_quality=eff_alpha_quality,
             )
         else:
             status.write("Recherche locale ignorée.")
