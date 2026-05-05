@@ -214,3 +214,6 @@ data/
 .packaging
 
 .claude/
+
+# Cache
+cache/
