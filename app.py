@@ -351,6 +351,22 @@ def generate_dashboard_html(
     # use_mapbox = False
     cache_dirty = False
 
+    # OSM-based road polyline fallback. When no Mapbox token is available we
+    # snap each leg of every route to the cached OSM graph and follow the
+    # OSM shortest-path coordinates, which renders road-following polylines
+    # without any external API call. Loaded lazily and only once.
+    osm_graph_for_render = None
+    osm_polyline_fn = None
+    if not use_mapbox:
+        try:
+            from geocapt_gtfs_osm_loader import _get_osm_graph, osm_road_polyline
+            osm_graph_for_render = _get_osm_graph()
+            osm_polyline_fn = osm_road_polyline
+        except Exception as e:
+            print(f"  OSM polyline fallback unavailable: {e!r}")
+            osm_graph_for_render = None
+            osm_polyline_fn = None
+
     # Build route infos
     route_infos = []
     total_veh_min = 0.0
@@ -362,19 +378,37 @@ def generate_dashboard_html(
             if c:
                 waypoints.append((c[1], c[0]))  # (lat, lon)
 
-        # Try cache first, then Mapbox API, then straight lines
-        # v4 suffix invalidates v3 (single multi-waypoint) geometries; the
-        # current fetcher is segment-by-segment with bearing continuity at
-        # each junction to prevent U-turns.
-        cache_key = "v4|" + ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
-        if cache_key in geom_cache:
-            coords = [f"[{c[0]}, {c[1]}]" for c in geom_cache[cache_key]]
+        # Try cache first, then Mapbox API, then OSM road polyline, then
+        # straight lines. v4 cache key matches the segment-by-segment
+        # bearing-aware Mapbox fetcher; v5_osm_seg keys the per-segment OSM
+        # snapping below so cached Mapbox geometries don't collide with
+        # cached OSM ones.
+        v4_key = "v4|" + ";".join(f"{lat:.6f},{lon:.6f}" for lat, lon in waypoints)
+        v5_osm_key = "v5_osm_seg|" + v4_key
+        if v4_key in geom_cache:
+            coords = [f"[{c[0]}, {c[1]}]" for c in geom_cache[v4_key]]
+        elif v5_osm_key in geom_cache:
+            coords = [f"[{c[0]}, {c[1]}]" for c in geom_cache[v5_osm_key]]
         elif use_mapbox and waypoints:
             road_coords = _fetch_road_geometry(
                 waypoints, access_token, "driving")
-            geom_cache[cache_key] = road_coords
+            geom_cache[v4_key] = road_coords
             cache_dirty = True
             coords = [f"[{lat}, {lon}]" for lat, lon in road_coords]
+        elif osm_polyline_fn is not None and osm_graph_for_render is not None and len(waypoints) >= 2:
+            # Snap every consecutive (a, b) leg to OSM and concatenate.
+            full: list[tuple[float, float]] = []
+            for k in range(len(waypoints) - 1):
+                seg = osm_polyline_fn(osm_graph_for_render, waypoints[k], waypoints[k + 1])
+                if not seg:
+                    seg = [waypoints[k], waypoints[k + 1]]
+                if k == 0:
+                    full.extend(seg)
+                else:
+                    full.extend(seg[1:])  # avoid duplicating junction
+            geom_cache[v5_osm_key] = [list(c) for c in full]
+            cache_dirty = True
+            coords = [f"[{lat}, {lon}]" for lat, lon in full]
         else:
             coords = [f"[{lat}, {lon}]" for lat, lon in waypoints]
 
@@ -775,7 +809,8 @@ def _run_optimization_inner(
 
     peak_metrics = evaluate_full(
         selected, peak_data["G"], peak_data["nodes"],
-        peak_data["demand_triples"])
+        peak_data["demand_triples"],
+        freqs=peak_freqs)
     peak_adeq = adequation_report(
         selected, peak_freqs, peak_data["nodes"], peak_data["prox"],
         peak_data["node_pot"], peak_data["node_q_min"],
@@ -814,7 +849,8 @@ def _run_optimization_inner(
     for band in ALL_BANDS:
         d = all_data[band]
         f_b = freqs_pp[band]
-        m_b = evaluate_full(selected, d["G"], d["nodes"], d["demand_triples"])
+        m_b = evaluate_full(selected, d["G"], d["nodes"], d["demand_triples"],
+                            freqs=f_b)
         a_b = adequation_report(
             selected, f_b, d["nodes"], d["prox"],
             d["node_pot"], d["node_q_min"], d["node_q_max"])
