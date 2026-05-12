@@ -943,6 +943,46 @@ def _compute_veh_hours(routes: list, freqs: list, G: dict) -> float:
     return total_min / 60.0
 
 
+def _compute_n_buses(routes: list, freqs: list, G: dict) -> int:
+    """Integer fleet size needed to operate routes at the given peak frequencies.
+
+    For each route: ceil(freq * round_trip_min / 60). Round-trip = 2× one-way
+    since lines are operated in both directions.
+    """
+    import math
+    total = 0
+    for r, f in zip(routes, freqs):
+        if not r or f <= 0:
+            continue
+        one_way = 0.0
+        for k in range(len(r) - 1):
+            u, v = r[k], r[k + 1]
+            for nb, tt in G.get(u, []):
+                if nb == v:
+                    one_way += tt
+                    break
+        round_trip = 2.0 * one_way
+        total += math.ceil(f * round_trip / 60.0)
+    return total
+
+
+# Mix temporel presets — replaces the 4 number inputs with a single preset.
+MIX_PRESETS = {
+    "Pointe": {"pot_hp": 70, "pot_hc": 20, "pot_soir": 5, "pot_nuit": 5},
+    "Toute la journée": {"pot_hp": 30, "pot_hc": 40, "pot_soir": 20, "pot_nuit": 10},
+    "Soirée et nuit": {"pot_hp": 10, "pot_hc": 20, "pot_soir": 40, "pot_nuit": 30},
+    "Équilibré": {"pot_hp": 40, "pot_hc": 30, "pot_soir": 20, "pot_nuit": 10},
+}
+
+
+def _render_n_buses_caption(res: dict) -> None:
+    """Display the integer fleet size needed at peak in a Streamlit metric."""
+    n_buses = _compute_n_buses(res["selected"], res["freqs_pp"]["pot_hp"], res["G"])
+    st.metric("Bus en service simultanément (pointe, aller-retour)", f"{n_buses}",
+              help="Nombre approximatif de véhicules nécessaires à l'heure de pointe "
+                   "pour tenir les fréquences calculées (aller-retour inclus).")
+
+
 def _render_headline_panel(vals: dict) -> None:
     """Render the 9-card customer-experience headline panel used by V1/V2/V4."""
     row1 = st.columns(3)
@@ -1021,55 +1061,45 @@ def _render_lock_swap_reset(vue_id: str, current: dict | None) -> tuple:
 PERSONAS = {
     "Pendulaires": {
         "label": "Pendulaires (heure de pointe, trajets directs)",
-        "confort": 80, "budget": 70,
-        "mix": {"pot_hp": 70, "pot_hc": 20, "pot_soir": 5, "pot_nuit": 5},
+        "confort": 80,
+        "max_lignes": 15, "intervalle_pire": 30, "intervalle_mieux": 5,
+        "transfer_pen": 8, "mix_preset": "Pointe",
         "summary": ("Les pendulaires recherchent des trajets directs et fréquents "
                     "pendant les heures de pointe matin/soir."),
     },
     "Vie nocturne": {
         "label": "Vie nocturne (sorties soir et nuit)",
-        "confort": 40, "budget": 50,
-        "mix": {"pot_hp": 5, "pot_hc": 15, "pot_soir": 50, "pot_nuit": 30},
+        "confort": 40,
+        "max_lignes": 10, "intervalle_pire": 45, "intervalle_mieux": 10,
+        "transfer_pen": 5, "mix_preset": "Soirée et nuit",
         "summary": ("Public sortant : la promesse est la couverture en soirée et "
                     "la nuit, pas le confort ultra-rapide."),
     },
     "Familles & loisirs": {
         "label": "Familles & loisirs (heure creuse, week-ends)",
-        "confort": 30, "budget": 60,
-        "mix": {"pot_hp": 15, "pot_hc": 55, "pot_soir": 25, "pot_nuit": 5},
+        "confort": 30,
+        "max_lignes": 12, "intervalle_pire": 45, "intervalle_mieux": 8,
+        "transfer_pen": 5, "mix_preset": "Toute la journée",
         "summary": ("Déplacements de loisirs en journée — la fluidité hors pointe "
                     "et la couverture des pôles familiaux comptent plus que la vitesse."),
     },
     "Inclusion territoriale": {
         "label": "Inclusion territoriale (couverture équitable)",
-        "confort": 10, "budget": 50,
-        "mix": {"pot_hp": 25, "pot_hc": 25, "pot_soir": 25, "pot_nuit": 25},
+        "confort": 10,
+        "max_lignes": 20, "intervalle_pire": 60, "intervalle_mieux": 10,
+        "transfer_pen": 3, "mix_preset": "Équilibré",
         "summary": ("Promesse de service public : aucun arrêt oublié, équité entre "
                     "les périodes, même au prix de correspondances."),
     },
     "Étudiants": {
         "label": "Étudiants (campus + soirée)",
-        "confort": 50, "budget": 55,
-        "mix": {"pot_hp": 35, "pot_hc": 25, "pot_soir": 30, "pot_nuit": 10},
+        "confort": 50,
+        "max_lignes": 13, "intervalle_pire": 30, "intervalle_mieux": 6,
+        "transfer_pen": 6, "mix_preset": "Équilibré",
         "summary": ("Alternance entre rythme universitaire (matin et fin d'après-midi) "
                     "et déplacements sociaux en soirée."),
     },
 }
-
-
-def _persona_blend(persona_id: str, intensity: int) -> tuple[int, int, dict]:
-    """Linearly blend the 'Équilibré' anchor toward the persona at `intensity` %."""
-    base_confort, base_budget = 50, 60
-    base_mix = {"pot_hp": 40, "pot_hc": 30, "pot_soir": 20, "pot_nuit": 10}
-    p = PERSONAS[persona_id]
-    t = intensity / 100.0
-    confort = int(round(base_confort + t * (p["confort"] - base_confort)))
-    budget = int(round(base_budget + t * (p["budget"] - base_budget)))
-    mix = {
-        k: float(base_mix[k] + t * (p["mix"][k] - base_mix[k]))
-        for k in base_mix
-    }
-    return confort, budget, mix
 
 
 # ============================================================================
@@ -1079,21 +1109,19 @@ def _persona_blend(persona_id: str, intensity: int) -> tuple[int, int, dict]:
 
 def _knob_summary_v1(s: dict) -> str:
     k = s.get("knobs", {})
-    mix = k.get("mix", {})
     return (
         f"Confort/Couverture: **{k.get('confort', '?')}**  ·  "
-        f"Budget flotte: **{k.get('budget', '?')}**  ·  "
-        f"Mix: P{mix.get('pot_hp', 0)*100:.0f} / J{mix.get('pot_hc', 0)*100:.0f} / "
-        f"S{mix.get('pot_soir', 0)*100:.0f} / N{mix.get('pot_nuit', 0)*100:.0f}"
+        f"Lignes max: **{k.get('max_lignes', '?')}**  ·  "
+        f"Mix: **{k.get('mix_preset', '?')}**"
     )
 
 
 def _render_vue1(gtfs_path: str) -> None:
-    """V1 — Pilotage stratégique : Confort/Couverture, Budget flotte, Mix temporel."""
+    """V1 — Pilotage stratégique : Confort/Couverture, nb de lignes, mix temporel."""
     st.markdown("""
     Ré-exprime l'optimisation en **expérience voyageur** et **promesse réseau**.
-    Réglez les deux curseurs et le mix temporel, lancez le scénario, puis
-    verrouillez-le pour comparer plusieurs stratégies dans le **Comparateur**.
+    Réglez les deux curseurs et choisissez le mix temporel, lancez le scénario,
+    puis verrouillez-le pour comparer plusieurs stratégies dans le **Comparateur**.
     """)
     st.subheader("Réglages du scénario")
     col_a, col_b = st.columns(2)
@@ -1106,22 +1134,21 @@ def _render_vue1(gtfs_path: str) -> None:
         )
         st.caption("← Couverture territoriale    |    Confort voyageur →")
     with col_b:
-        budget = st.slider(
-            "Budget flotte", 0, 100, 60, 5, key="v1_budget",
-            help="0 = 3 lignes seulement. 100 = jusqu'à 20 lignes.",
+        max_lignes = st.slider(
+            "Nombre maximum de lignes", 3, 25, 12, 1, key="v1_max_lignes",
+            help="Plafond du nombre de lignes que l'optimiseur peut activer.",
         )
         st.caption("← Flotte légère    |    Flotte généreuse →")
 
     st.subheader("Mix temporel")
-    st.caption("Quels moments de la journée prioriser ? Normalisé automatiquement.")
-    mix_cols = st.columns(4)
-    mix_hp = mix_cols[0].number_input("Heure de pointe", 0, 100, 40, 5, key="v1_mix_hp")
-    mix_hc = mix_cols[1].number_input("Journée (creuse)", 0, 100, 30, 5, key="v1_mix_hc")
-    mix_soir = mix_cols[2].number_input("Soirée", 0, 100, 20, 5, key="v1_mix_soir")
-    mix_nuit = mix_cols[3].number_input("Nuit", 0, 100, 10, 5, key="v1_mix_nuit")
-
-    raw_mix = {"pot_hp": float(mix_hp), "pot_hc": float(mix_hc),
-               "pot_soir": float(mix_soir), "pot_nuit": float(mix_nuit)}
+    mix_preset = st.selectbox(
+        "Quels moments de la journée prioriser ?",
+        list(MIX_PRESETS), index=list(MIX_PRESETS).index("Équilibré"),
+        key="v1_mix_preset",
+        help=("Sélectionne la pondération des 4 périodes. "
+              "« Équilibré » = profil par défaut."),
+    )
+    raw_mix = dict(MIX_PRESETS[mix_preset])
     norm_mix = _normalize_mix(raw_mix)
     mix_summary = "  ·  ".join(
         f"{lbl}: {norm_mix[k]*100:.0f} %"
@@ -1130,13 +1157,20 @@ def _render_vue1(gtfs_path: str) -> None:
     )
     st.caption(f"**Pondération effective :** {mix_summary}")
 
-    knobs = {"confort": confort, "budget": budget, "mix": norm_mix}
-    mkt_params = _marketing_to_params(confort, budget, raw_mix)
+    knobs = {"confort": confort, "max_lignes": max_lignes,
+             "mix_preset": mix_preset, "mix": norm_mix}
+    # Reuse _marketing_to_params for the alpha_* mapping; override max_routes
+    # so the user's explicit line count wins.
+    budget_eq = int(round(100 * (max_lignes - 3) / (20 - 3)))
+    budget_eq = max(0, min(100, budget_eq))
+    mkt_params = _marketing_to_params(confort, budget_eq, raw_mix)
+    mkt_params["max_routes"] = max_lignes
 
     with st.expander("Détails techniques (pour info)", expanded=False):
         st.json({
             "Confort vs Couverture (0-100)": confort,
-            "Budget flotte (0-100)": budget,
+            "Lignes max": max_lignes,
+            "Mix preset": mix_preset,
             "Mix temporel": {k: round(v, 3) for k, v in norm_mix.items()},
             "→ alpha_pass": round(mkt_params["alpha_pass"], 3),
             "→ alpha_adeq": round(mkt_params["alpha_adeq"], 3),
@@ -1159,6 +1193,7 @@ def _render_vue1(gtfs_path: str) -> None:
     st.markdown("---")
     st.subheader("Indicateurs voyageur")
     _render_headline_panel(_extract_mkt_values(res))
+    _render_n_buses_caption(res)
 
     st.markdown("---")
     st.subheader("Carte du réseau optimisé")
@@ -1260,13 +1295,15 @@ def _render_vue2(gtfs_path: str) -> None:
     interv_max_obs = 60.0 / min(positive) if positive else float("nan")
     interv_min_obs = 60.0 / max(positive) if positive else float("nan")
     veh_h = _compute_veh_hours(res["selected"], peak_freqs, res["G"])
+    n_buses = _compute_n_buses(res["selected"], peak_freqs, res["G"])
 
     st.markdown("---")
     st.subheader("Tableau de bord opérationnel")
     op = st.columns(3)
     op[0].metric("Lignes au plan", f"{res['n_routes']}")
     op[1].metric("Fréquence moyenne en pointe", f"{avg_freq:.1f} bus/h")
-    op[2].metric("Heures-bus / heure de service", f"{veh_h:.1f} h")
+    op[2].metric("Bus en service (pointe, aller-retour)", f"{n_buses}",
+                 help=f"Heures-bus / heure de service : {veh_h:.1f} h.")
 
     op2 = st.columns(3)
     op2[0].metric("Intervalle observé le plus serré", f"{interv_min_obs:.1f} min")
@@ -1315,8 +1352,8 @@ def _render_vue2(gtfs_path: str) -> None:
                     f"{(60.0/max(pos) if pos else 0):.1f}",
                 "Intervalle le plus large (min)":
                     f"{(60.0/min(pos) if pos else 0):.1f}",
-                "Heures-bus / heure de service":
-                    f"{_compute_veh_hours(r['selected'], pf, r['G']):.1f}",
+                "Bus en service (pointe)":
+                    f"{_compute_n_buses(r['selected'], pf, r['G'])}",
                 "Voyages directs (%)":
                     f"{r['peak_metrics'].get('d0', 0):.1f}",
                 "Demande non desservie (%)":
@@ -1330,280 +1367,98 @@ def _render_vue2(gtfs_path: str) -> None:
 
 
 # ----------------------------------------------------------------------------
-# V3 — Promesse de service
-# ----------------------------------------------------------------------------
-
-def _render_vue3(gtfs_path: str) -> None:
-    st.markdown("""
-    Posez vos **promesses de service** comme une charte client.  L'optimiseur
-    fournit un réseau, et nous vérifions si chaque promesse est **tenue** ou
-    **manquée**.  Mode *Boucle fermée* : le solveur tente automatiquement
-    de tenir toutes les promesses (jusqu'à 3 itérations).
-    """)
-    st.subheader("Vos promesses")
-    col1, col2 = st.columns(2)
-    with col1:
-        promesse_d0 = st.slider(
-            "Voyages directs promis (%)", 50, 100, 80, 5, key="v3_p_d0",
-            help="« Au moins X % de nos voyageurs ne changent jamais de bus. »")
-        promesse_pct_ok = st.slider(
-            "Arrêts bien servis promis (%)", 50, 100, 75, 5, key="v3_p_ok",
-            help="« Au moins X % des arrêts ont un service dimensionné à la demande. »")
-    with col2:
-        promesse_att = st.slider(
-            "Temps moyen maximal promis (min)", 3.0, 15.0, 6.0, 0.5, key="v3_p_att",
-            help="« Un trajet moyen dure au plus X minutes. »")
-        promesse_intv = st.slider(
-            "Intervalle maximal promis sur les axes forts (min)", 5, 30, 12, 1,
-            key="v3_p_intv",
-            help="« Sur la ligne la plus fréquente, un bus passe au moins toutes les X minutes. »")
-
-    st.subheader("Mode")
-    mode = st.radio(
-        "Comment vérifier les promesses ?",
-        ["Post-hoc (rapide)", "Boucle fermée (auto-réglage)"],
-        index=0, key="v3_mode",
-        help="Post-hoc lance une optimisation neutre puis compare. Boucle fermée tente "
-             "de pousser le solveur jusqu'à tenir toutes les promesses.",
-    )
-
-    targets = {
-        "d0": promesse_d0, "pct_ok": promesse_pct_ok,
-        "ATT": promesse_att, "intv": promesse_intv,
-    }
-    knobs = {**targets, "mode": mode}
-
-    if st.button("Lancer ce scénario", type="primary", use_container_width=True,
-                 key="v3_run"):
-        # Base params: balanced
-        base_params = _marketing_to_params(
-            50, 60, {"pot_hp": 40, "pot_hc": 30, "pot_soir": 20, "pot_nuit": 10})
-        if mode.startswith("Post-hoc"):
-            out = run_optimization(base_params, gtfs_path)
-            iterations = []
-            if out is not None:
-                iterations.append({
-                    "iter": 1, "alpha_pass": base_params["alpha_pass"],
-                    "alpha_adeq": base_params["alpha_adeq"],
-                    "f_min": base_params.get("_f_min"),
-                    "result_summary": _v3_evaluate(out, targets),
-                })
-            if out is not None:
-                st.session_state["mkt_v3_current"] = {
-                    "results": out, "knobs": knobs, "iterations": iterations}
-        else:
-            iterations = []
-            params = dict(base_params)
-            out = None
-            for it in range(1, 4):
-                st.write(f"**Itération {it}/3** — alpha_pass={params['alpha_pass']:.2f}, "
-                         f"alpha_adeq={params['alpha_adeq']:.2f}, "
-                         f"f_min={params.get('_f_min', 'défaut')}")
-                out = run_optimization(params, gtfs_path)
-                if out is None:
-                    break
-                eval_ = _v3_evaluate(out, targets)
-                iterations.append({
-                    "iter": it, "alpha_pass": params["alpha_pass"],
-                    "alpha_adeq": params["alpha_adeq"],
-                    "f_min": params.get("_f_min"),
-                    "result_summary": eval_,
-                })
-                if all(v["status"] == "Tenue" for v in eval_.values()):
-                    st.success(f"Toutes les promesses tenues à l'itération {it}.")
-                    break
-                # Bump alphas based on misses
-                if eval_["d0"]["status"] == "Manquée":
-                    params["alpha_pass"] *= 1.5
-                if eval_["pct_ok"]["status"] == "Manquée":
-                    params["alpha_adeq"] *= 2.0
-                if eval_["ATT"]["status"] == "Manquée":
-                    params["alpha_pass"] *= 1.3
-                if eval_["intv"]["status"] == "Manquée":
-                    params["_f_min"] = float(params.get("_f_min", 1.0)) + 1.0
-            if out is not None:
-                st.session_state["mkt_v3_current"] = {
-                    "results": out, "knobs": knobs, "iterations": iterations}
-
-    current = st.session_state.get("mkt_v3_current")
-    if current is None:
-        st.info("Cliquez sur **Lancer ce scénario** pour évaluer vos promesses.")
-        return
-
-    res = current["results"]
-    eval_ = _v3_evaluate(res, current["knobs"])
-
-    # Score header
-    n_kept = sum(1 for v in eval_.values() if v["status"] == "Tenue")
-    total = len(eval_)
-    if n_kept >= 3:
-        bar_color = "#1b8e3a"; flag = "🎯"
-    elif n_kept == 2:
-        bar_color = "#d68910"; flag = "⚖"
-    else:
-        bar_color = "#c0392b"; flag = "⚠"
-
-    st.markdown("---")
-    st.subheader("Score de la charte")
-    st.markdown(
-        f"<div style='font-size:28px;font-weight:700;color:{bar_color}'>"
-        f"{flag} Promesses tenues : {n_kept} / {total}</div>",
-        unsafe_allow_html=True,
-    )
-    st.progress(n_kept / total)
-
-    # Scorecard table
-    rows = []
-    label_map = {
-        "d0": ("Voyages directs", "%"),
-        "pct_ok": ("Arrêts bien servis", "%"),
-        "ATT": ("Temps moyen", "min"),
-        "intv": ("Intervalle max sur axes forts", "min"),
-    }
-    op_map = {"d0": "≥", "pct_ok": "≥", "ATT": "≤", "intv": "≤"}
-    for key, ev in eval_.items():
-        lbl, unit = label_map[key]
-        rows.append({
-            "Promesse": lbl,
-            "Cible": f"{op_map[key]} {ev['target']:.1f} {unit}",
-            "Réalisé": f"{ev['actual']:.1f} {unit}",
-            "Statut": ev["status"],
-            "Δ": ev["delta_str"],
-        })
-
-    def _style_status(val):
-        if val == "Tenue": return "color: #1b8e3a; font-weight: 700;"
-        if val == "Manquée": return "color: #c0392b; font-weight: 700;"
-        return ""
-
-    df = pd.DataFrame(rows)
-    styler = df.style
-    apply_fn = getattr(styler, "map", None) or styler.applymap
-    st.dataframe(apply_fn(_style_status, subset=["Statut"]),
-                 use_container_width=True, hide_index=True)
-
-    # Iterations log
-    iters = current.get("iterations", [])
-    if len(iters) > 1:
-        with st.expander(f"Journal de la boucle fermée ({len(iters)} itérations)",
-                         expanded=False):
-            for it in iters:
-                kept = sum(1 for v in it["result_summary"].values()
-                           if v["status"] == "Tenue")
-                st.markdown(
-                    f"**Itération {it['iter']}** — α_pass={it['alpha_pass']:.2f}, "
-                    f"α_adeq={it['alpha_adeq']:.2f}, "
-                    f"f_min={it['f_min']}  →  promesses tenues : {kept}/4")
-
-    st.markdown("---")
-    st.subheader("Carte du réseau optimisé")
-    _render_map_for_results(res, f"V3 — promesses tenues {n_kept}/{total}")
-
-    st.markdown("---")
-    st.subheader("Comparateur de chartes")
-    sc_A, sc_B = _render_lock_swap_reset("3", current)
-
-    if sc_A is None or sc_B is None:
-        st.info("Verrouillez deux chartes pour afficher le comparateur.")
-    else:
-        def _v3_card(s):
-            k = s["knobs"]
-            return (f"Directs ≥ {k['d0']}%  ·  Bien servis ≥ {k['pct_ok']}%  ·  "
-                    f"ATT ≤ {k['ATT']} min  ·  Intervalle ≤ {k['intv']} min")
-        st.markdown(f"**Charte A** — {_v3_card(sc_A)}")
-        st.markdown(f"**Charte B** — {_v3_card(sc_B)}")
-
-        a_eval = _v3_evaluate(sc_A["results"], sc_A["knobs"])
-        b_eval = _v3_evaluate(sc_B["results"], sc_B["knobs"])
-        a_kept = sum(1 for v in a_eval.values() if v["status"] == "Tenue")
-        b_kept = sum(1 for v in b_eval.values() if v["status"] == "Tenue")
-        st.markdown(f"**Charte A** : {a_kept}/4 tenues  ·  **Charte B** : {b_kept}/4 tenues")
-
-        rows = []
-        for key, lbl in [("d0", "Voyages directs"), ("pct_ok", "Arrêts bien servis"),
-                         ("ATT", "Temps moyen"), ("intv", "Intervalle max")]:
-            rows.append({
-                "Promesse": lbl,
-                "Charte A — réalisé": f"{a_eval[key]['actual']:.1f}",
-                "Charte A — statut": a_eval[key]["status"],
-                "Charte B — réalisé": f"{b_eval[key]['actual']:.1f}",
-                "Charte B — statut": b_eval[key]["status"],
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-
-def _v3_evaluate(results: dict, targets: dict) -> dict:
-    """Compare an optimization result against the V3 promise targets."""
-    pf = results["freqs_pp"].get("pot_hp", [])
-    positive = [f for f in pf if f > 0]
-    intv_obs_max = (60.0 / max(positive)) if positive else float("inf")
-    actuals = {
-        "d0": results["peak_metrics"].get("d0", 0),
-        "pct_ok": results["peak_adeq"].get("pct_ok", 0),
-        "ATT": results["peak_metrics"].get("ATT", 0),
-        "intv": intv_obs_max,
-    }
-    out = {}
-    for key, target in targets.items():
-        if key not in actuals:  # ignore "mode"
-            continue
-        a = actuals[key]
-        if key in ("d0", "pct_ok"):
-            ok = a >= target
-            delta = a - target
-            unit = "pp"
-        else:  # ATT, intv: lower-better
-            ok = a <= target
-            delta = a - target
-            unit = "min" if key == "ATT" or key == "intv" else ""
-        out[key] = {
-            "target": float(target),
-            "actual": float(a),
-            "status": "Tenue" if ok else "Manquée",
-            "delta": float(delta),
-            "delta_str": f"{delta:+.1f} {unit}",
-        }
-    return out
-
-
-# ----------------------------------------------------------------------------
 # V4 — Public cible (persona)
 # ----------------------------------------------------------------------------
 
 def _render_vue4(gtfs_path: str) -> None:
     st.markdown("""
-    Choisissez un **public cible** et l'**intensité** de la promesse pour ce
-    public.  Le réseau est optimisé pour servir prioritairement ce profil.
-    Le tableau de bord ci-dessous met en avant les **KPI propres au persona**.
+    Choisissez un **public cible** : la vue pré-remplit les réglages d'exploitation
+    adaptés à ce public.  Ajustez ensuite les **chiffres concrets** (nombre de
+    lignes, cadences, pénalité de correspondance) avant de lancer le scénario.
     """)
     st.subheader("Public cible")
     persona_id = st.selectbox(
         "Persona", list(PERSONAS), index=0, key="v4_persona",
         format_func=lambda p: PERSONAS[p]["label"],
     )
-    st.caption(PERSONAS[persona_id]["summary"])
+    preset = PERSONAS[persona_id]
+    st.caption(preset["summary"])
 
-    intensity = st.slider(
-        "Intensité de la promesse", 0, 100, 70, 5, key="v4_intensity",
-        help=("0 = profil neutre (Équilibré).  100 = on optimise à fond pour ce "
-              "public, au risque de moins bien servir les autres."),
+    # Persona pre-fills concrete V2-style controls.  Including persona_id in the
+    # widget key resets each slider to the new persona's default when the user
+    # switches persona — without losing the previous persona's edits.
+    st.subheader("Réglages d'exploitation")
+    col1, col2 = st.columns(2)
+    max_lignes = col1.slider(
+        "Nombre maximum de lignes", 3, 25, preset["max_lignes"], 1,
+        key=f"v4_max_lignes_{persona_id}",
+        help="Plafond du nombre de lignes que l'optimiseur peut activer.",
+    )
+    transfer_pen = col2.slider(
+        "Pénalité d'une correspondance (min équivalentes)", 0, 15,
+        preset["transfer_pen"], 1, key=f"v4_pen_{persona_id}",
+        help="Plus c'est petit, plus on accepte de faire changer le voyageur.",
     )
 
-    confort, budget, raw_mix = _persona_blend(persona_id, intensity)
+    col3, col4 = st.columns(2)
+    intervalle_pire = col3.slider(
+        "Au pire, un bus toutes les … minutes", 10, 60,
+        preset["intervalle_pire"], 5, key=f"v4_pire_{persona_id}",
+        help="Plancher d'intervalle (fréquence minimale imposée).",
+    )
+    intervalle_mieux = col4.slider(
+        "Au mieux, un bus toutes les … minutes", 3, 30,
+        preset["intervalle_mieux"], 1, key=f"v4_mieux_{persona_id}",
+        help="Plafond d'intervalle (intervalle minimal admissible).",
+    )
+    if intervalle_mieux >= intervalle_pire:
+        st.warning("'Au mieux' doit être < 'Au pire'.")
+
+    mix_preset_keys = list(MIX_PRESETS)
+    default_mix_idx = mix_preset_keys.index(preset["mix_preset"])
+    mix_preset = st.selectbox(
+        "Mix temporel (périodes prioritaires)", mix_preset_keys,
+        index=default_mix_idx, key=f"v4_mix_{persona_id}",
+        help="Pondération des 4 périodes — pré-réglée selon le persona.",
+    )
+
+    raw_mix = dict(MIX_PRESETS[mix_preset])
     norm_mix = _normalize_mix(raw_mix)
-    knobs = {"persona": persona_id, "intensity": intensity,
-             "confort": confort, "budget": budget, "mix": norm_mix}
-    params = _marketing_to_params(confort, budget, raw_mix)
+    f_min_vh = 60.0 / intervalle_pire
+    f_max_vh = 60.0 / intervalle_mieux
+
+    knobs = {
+        "persona": persona_id,
+        "max_lignes": max_lignes,
+        "intervalle_pire": intervalle_pire,
+        "intervalle_mieux": intervalle_mieux,
+        "transfer_pen": transfer_pen,
+        "mix_preset": mix_preset,
+        "mix": norm_mix,
+    }
+
+    # Persona's confort drives the alpha mapping; max_lignes drives max_routes.
+    budget_eq = int(round(100 * (max_lignes - 3) / (20 - 3)))
+    budget_eq = max(0, min(100, budget_eq))
+    params = _marketing_to_params(preset["confort"], budget_eq, raw_mix)
+    params["max_routes"] = max_lignes
+    params["_f_min"] = f_min_vh
+    params["_f_max"] = f_max_vh
+    params["_transfer_penalty"] = float(transfer_pen)
 
     with st.expander("Détails techniques (pour info)", expanded=False):
         st.json({
-            "persona": persona_id, "intensity": intensity,
-            "confort_eq": confort, "budget_eq": budget,
-            "mix": {k: round(v, 3) for k, v in norm_mix.items()},
+            "persona": persona_id,
+            "max_lignes": max_lignes,
+            "intervalle_pire (min)": intervalle_pire,
+            "intervalle_mieux (min)": intervalle_mieux,
+            "transfer_pen (min)": transfer_pen,
+            "mix_preset": mix_preset,
             "→ alpha_pass": round(params["alpha_pass"], 3),
             "→ alpha_adeq": round(params["alpha_adeq"], 3),
             "→ alpha_oper": round(params["alpha_oper"], 4),
-            "→ max_routes": params["max_routes"],
+            "→ f_min (veh/h)": round(f_min_vh, 2),
+            "→ f_max (veh/h)": round(f_max_vh, 2),
         })
 
     if st.button("Lancer ce scénario", type="primary", use_container_width=True,
@@ -1626,13 +1481,14 @@ def _render_vue4(gtfs_path: str) -> None:
     st.markdown("---")
     st.subheader("Vue voyageur générale")
     _render_headline_panel(_extract_mkt_values(res))
+    _render_n_buses_caption(res)
 
     st.markdown("---")
     st.subheader("Carte du réseau optimisé")
     _render_map_for_results(res, f"V4 — Persona « {persona_id} »")
 
     st.markdown("---")
-    st.subheader("Comparateur de personas / intensités")
+    st.subheader("Comparateur de personas")
     sc_A, sc_B = _render_lock_swap_reset("4", current)
 
     if sc_A is None or sc_B is None:
@@ -1640,7 +1496,11 @@ def _render_vue4(gtfs_path: str) -> None:
     else:
         def _v4_summary(s):
             k = s["knobs"]
-            return f"« {k['persona']} » à intensité **{k['intensity']}%**"
+            return (f"« {k['persona']} »  ·  {k.get('max_lignes', '?')} lignes max  ·  "
+                    f"intervalle {k.get('intervalle_mieux', '?')}–"
+                    f"{k.get('intervalle_pire', '?')} min  ·  "
+                    f"pénalité {k.get('transfer_pen', '?')} min  ·  "
+                    f"mix {k.get('mix_preset', '?')}")
         st.markdown(f"**Scénario A** — {_v4_summary(sc_A)}")
         st.markdown(f"**Scénario B** — {_v4_summary(sc_B)}")
         ledger_df = render_ledger(sc_A, sc_B)
@@ -1794,15 +1654,22 @@ def _render_vue5(gtfs_path: str) -> None:
     col_b1, col_b2 = st.columns(2)
     confort_v5 = col_b1.slider("Confort voyageur ↔ Couverture", 0, 100, 50, 5,
                                 key="v5_confort")
-    budget_v5 = col_b2.slider("Budget flotte", 0, 100, 60, 5, key="v5_budget")
+    max_lignes_v5 = col_b2.slider(
+        "Nombre maximum de lignes", 3, 25, 12, 1, key="v5_max_lignes",
+        help="Plafond du nombre de lignes que l'optimiseur peut activer.",
+    )
 
-    knobs = {"weights": weights, "confort": confort_v5, "budget": budget_v5}
+    knobs = {"weights": weights, "confort": confort_v5,
+             "max_lignes": max_lignes_v5}
 
     if st.button("Lancer ce scénario territorial", type="primary",
                  use_container_width=True, key="v5_run"):
+        budget_eq = int(round(100 * (max_lignes_v5 - 3) / (20 - 3)))
+        budget_eq = max(0, min(100, budget_eq))
         params = _marketing_to_params(
-            confort_v5, budget_v5,
+            confort_v5, budget_eq,
             {"pot_hp": 40, "pot_hc": 30, "pot_soir": 20, "pot_nuit": 10})
+        params["max_routes"] = max_lignes_v5
 
         # Map stop_id → node_id by loading once cheaply through Capt-Temp
         try:
@@ -1881,6 +1748,7 @@ def _render_vue5(gtfs_path: str) -> None:
     st.markdown("---")
     st.subheader("Indicateurs voyageur — global")
     _render_headline_panel(_extract_mkt_values(res))
+    _render_n_buses_caption(res)
 
     st.markdown("---")
     st.subheader("Carte du réseau optimisé")
@@ -2314,15 +2182,14 @@ elif step == "4 - Exécution & Résultats":
 elif step == "5 - Vues Marketing":
     st.header("Vues Marketing — pilotage du réseau")
     st.markdown(
-        "Cinq angles de pilotage. Chaque vue a ses propres réglages, son "
+        "Quatre angles de pilotage. Chaque vue a ses propres réglages, son "
         "propre tableau de bord, et son propre comparateur A/B."
     )
     gtfs_path = st.session_state.get("gtfs_path", str(GTFS_DIR))
 
-    tab_v1, tab_v2, tab_v3, tab_v4, tab_v5 = st.tabs([
+    tab_v1, tab_v2, tab_v4, tab_v5 = st.tabs([
         "V1 — Pilotage stratégique",
         "V2 — Cadrage opérationnel",
-        "V3 — Promesse de service",
         "V4 — Public cible",
         "V5 — Comparateur territorial",
     ])
@@ -2330,8 +2197,6 @@ elif step == "5 - Vues Marketing":
         _render_vue1(gtfs_path)
     with tab_v2:
         _render_vue2(gtfs_path)
-    with tab_v3:
-        _render_vue3(gtfs_path)
     with tab_v4:
         _render_vue4(gtfs_path)
     with tab_v5:
